@@ -696,3 +696,4 @@ export default function OutcomerGen() {
     </div>
   );
                      }
+export default OutcomerGen;
