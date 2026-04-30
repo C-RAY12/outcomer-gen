@@ -696,3 +696,9 @@ export default function OutcomerGen() {
     </div>
   );
     }
+const rootElement = document.getElementById("root");
+if (rootElement) {
+  const { createRoot } = await import("react-dom/client");
+  createRoot(rootElement).render(<OutcomerGen />);
+}
+
