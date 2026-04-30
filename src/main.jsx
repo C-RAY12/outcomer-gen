@@ -185,10 +185,11 @@ function TrustGauge({ score, t }) {
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function OutcomerGen() {
-  /* ... everything you have below, unchanged ... */
-  // Put your dashboard code's OutcomerGen definition here!
-  // (Use the ENTIRE body exactly as you posted, don't make an export)
-  // ... (see provided code above for full logic, including OutcomerGen) ...
+  // PASTE ALL YOUR HOOKS (useState, useEffect) HERE
+  
+  return (
+    // PASTE YOUR ENTIRE <div style=...> BLOCK HERE
+  );
 }
 
 // ─── VITE ENTRY POINT ──────────────────────────────────────────────────────────
