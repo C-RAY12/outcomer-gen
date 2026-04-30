@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Activity, Zap, Eye, AlertTriangle, RefreshCw, Moon, Sun, TrendingUp, TrendingDown, Minus, Shield, Fish, MessageSquare, ChevronRight, Circle, BarChart2 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { createRoot } from "react-dom/client";
 
 // ─── THEME SYSTEM ───────────────────────────────────────────────────────────
 const THEMES = {
@@ -698,7 +699,5 @@ export default function OutcomerGen() {
     }
 const rootElement = document.getElementById("root");
 if (rootElement) {
-  const { createRoot } = await import("react-dom/client");
   createRoot(rootElement).render(<OutcomerGen />);
 }
-
