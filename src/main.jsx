@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
+// Import all necessary icons from lucide-react
 import { Activity, Zap, Eye, AlertTriangle, RefreshCw, Moon, Sun, TrendingUp, TrendingDown, Minus, Shield, Fish, MessageSquare, ChevronRight, Circle, BarChart2 } from "lucide-react";
+// Import Recharts components for the Whale Sieve visualization
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 // ─── THEME SYSTEM ───────────────────────────────────────────────────────────
+// High-contrast industrial themes for Web3 monitoring
 const THEMES = {
   dark: {
     bg: "#050d1a",
@@ -45,9 +48,10 @@ const THEMES = {
   },
 };
 
-// ─── HYPERLIQUID TESTNET API ─────────────────────────────────────────────────
+// ─── HYPERLIQUID TESTNET API CONFIG ──────────────────────────────────────────
 const HL_API = "https://api.hyperliquid-testnet.xyz/info";
 
+// Helper for POST requests to the Hyperliquid Info API
 async function hlPost(body) {
   const r = await fetch(HL_API, {
     method: "POST",
@@ -58,7 +62,7 @@ async function hlPost(body) {
   return r.json();
 }
 
-// ─── DECIMAL NORMALIZATION ───────────────────────────────────────────────────
+// ─── UTILITY FUNCTIONS (FORMATTING) ──────────────────────────────────────────
 function scaleSize(raw, szDecimals) {
   if (raw == null || szDecimals == null) return null;
   return parseFloat(raw) / Math.pow(10, szDecimals);
@@ -74,126 +78,176 @@ function fmtUSD(n) {
   return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function fmtPct(n) {
-  if (n == null || isNaN(n)) return "—";
-  return (n * 100).toFixed(1) + "%";
-}
-
 function shortAddr(addr) {
   if (!addr) return "—";
   return addr.slice(0, 6) + "…" + addr.slice(-4);
 }
 
-// ─── TRUST SCORE ─────────────────────────────────────────────────────────────
-function calcTrustScore({ spread, depth, volatility }) {
+// Logic to determine market health score based on depth and spread
+function calcTrustScore({ spread, depth }) {
   if (spread == null || depth == null) return null;
-  const vol = volatility || 0.01;
   const spreadPenalty = Math.max(0, 1 - spread * 10);
   const depthBonus = Math.min(1, depth / 10000);
-  const volPenalty = Math.max(0, 1 - vol * 5);
-  return Math.round(((spreadPenalty + depthBonus + volPenalty) / 3) * 100);
+  return Math.round(((spreadPenalty + depthBonus) / 2) * 100);
 }
 
-function trustLabel(score) {
-  if (score == null) return { label: "Unknown", color: null };
-  if (score >= 75) return { label: "High Trust", color: "yes" };
-  if (score >= 45) return { label: "Moderate", color: "warn" };
-  return { label: "Low Trust", color: "no" };
-}
+// ─── UI COMPONENTS ────────────────────────────────────────────────────────────
 
-// ─── TRANSLATOR NARRATION ──────────────────────��──────────────────────────────
-function narrateFill(fill, marketName, szDecimals) {
-  const size = scaleSize(fill.sz, szDecimals);
-  const price = parseFloat(fill.px);
-  const value = size != null ? size * price : null;
-  const side = fill.side === "B" ? "bought YES" : "sold YES (bet NO)";
-  const prob = (price * 100).toFixed(1);
-  const emoji = fill.side === "B" ? "🟢" : "🔴";
-  const addr = shortAddr(fill.user || fill.oid?.toString());
-  return {
-    id: fill.oid || Math.random(),
-    text: `${emoji} ${addr} ${side} ${size != null ? fmtNum(size, 2) : "?"} contracts on "${marketName}" @ ${fmtNum(price, 4)} (${prob}% implied), worth ${value != null ? fmtUSD(value) : "N/A"}.`,
-    side: fill.side,
-    ts: fill.time || Date.now(),
-    price,
-    size,
-    value,
-    market: marketName,
-  };
-}
-
-// ─── DATA BADGE ──────────────────────────────────────────────────────────────
-function DataBadge({ t }) {
-  return (
-    <span style={{
-      fontSize: 9, fontWeight: 700, letterSpacing: 1,
-      padding: "2px 6px", borderRadius: 3,
-      background: t.accentSoft, color: t.textMuted, border: `1px solid ${t.border}`,
-    }}>DATA PENDING</span>
-  );
-}
-
-// ─── TRUST GAUGE ─────────────────────────────────────────────────────────────
+// Gauge showing the trust score of a market
 function TrustGauge({ score, t }) {
-  const { label, color } = trustLabel(score);
-  const clr = color ? t[color] : t.textMuted;
+  const clr = score >= 75 ? t.yes : score >= 45 ? t.warn : t.no;
   const pct = score ?? 0;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-      <div style={{ position: "relative", width: 120, height: 64 }}>
-        <svg width={120} height={64} viewBox="0 0 120 64">
-          <path d="M10 60 A50 50 0 0 1 110 60" fill="none" stroke={t.border} strokeWidth={10} strokeLinecap="round" />
-          <path
-            d="M10 60 A50 50 0 0 1 110 60"
-            fill="none" stroke={clr} strokeWidth={10} strokeLinecap="round"
-            strokeDasharray={`${(pct / 100) * 157} 157`}
-            style={{ filter: `drop-shadow(0 0 6px ${clr})`, transition: "stroke-dasharray 1s ease" }}
-          />
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+      <div style={{ position: "relative", width: 100, height: 50 }}>
+        <svg width="100" height="50" viewBox="0 0 100 50">
+          <path d="M10 45 A40 40 0 0 1 90 45" fill="none" stroke={t.border} strokeWidth={8} strokeLinecap="round" />
+          <path d="M10 45 A40 40 0 0 1 90 45" fill="none" stroke={clr} strokeWidth={8} strokeLinecap="round" strokeDasharray={`${(pct / 100) * 126} 126`} />
         </svg>
-        <div style={{
-          position: "absolute", bottom: 4, left: "50%", transform: "translateX(-50%)",
-          fontSize: 28, fontWeight: 900, color: clr, fontFamily: "monospace",
-          textShadow: `0 0 12px ${clr}`,
-        }}>
-          {score ?? "?"}
-        </div>
+        <div style={{ position: "absolute", bottom: 0, width: "100%", textAlign: "center", fontSize: 20, fontWeight: 900, color: clr }}>{score ?? "?"}</div>
       </div>
-      <div style={{ fontSize: 11, fontWeight: 700, color: clr, letterSpacing: 1 }}>{label.toUpperCase()}</div>
+      <div style={{ fontSize: 9, fontWeight: 700, color: clr }}>TRUST SCORE</div>
     </div>
   );
 }
 
-// (snip—rest is unchanged from your code, everything stays as in your dashboard code!)
-
-// ─── MARKET HEALTH CARD ───────────────────────────────────────────────────────
-/* ... as in your code ... */
-
-// ─── WHALE SIEVE ──────────────────────────────────────────────────────────────
-/* ... as in your code ... */
-
-// ─── TRANSLATOR FEED ──────────────────────────────────────────────────────────
-/* ... as in your code ... */
-
-// ─── MARKET SELECTOR ─────────────────────────────────────────────────────────
-/* ... as in your code ... */
-
-// ─── STATUS BAR ──────────────────────────────────────────────────────────────
-/* ... as in your code ... */
-
-// ─── MOCK DATA GENERATOR (fallback when API is limited) ───────────────────────
-/* ... as in your code ... */
-
-// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+// ─── MAIN APP COMPONENT ───────────────────────────────────────────────────────
 function OutcomerGen() {
-  // PASTE ALL YOUR HOOKS (useState, useEffect) HERE
-  
+  const [theme, setTheme] = useState("dark");
+  const t = THEMES[theme];
+
+  const [markets, setMarkets] = useState([]);
+  const [selectedMarket, setSelectedMarket] = useState(null);
+  const [marketData, setMarketData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Initialize market list from Hyperliquid or fallback to demo
+  useEffect(() => {
+    async function init() {
+      setLoading(true);
+      try {
+        const meta = await hlPost({ type: "meta" });
+        const list = (meta?.universe || []).slice(0, 10).map(m => ({ coin: m.name, szDecimals: m.szDecimals }));
+        setMarkets(list);
+        if (list.length > 0) setSelectedMarket(list[0]);
+      } catch (e) {
+        setError("Using Demo Data (API Restricted)");
+        const demo = [{ coin: "BTC-OUTCOME", szDecimals: 2 }, { coin: "ETH-OUTCOME", szDecimals: 2 }];
+        setMarkets(demo);
+        setSelectedMarket(demo[0]);
+      }
+      setLoading(false);
+    }
+    init();
+  }, []);
+
+  // Fetch specific market details (Spread, Depth, etc.)
+  const refreshData = useCallback(async () => {
+    if (!selectedMarket) return;
+    setLoading(true);
+    try {
+      const l2 = await hlPost({ type: "l2Book", coin: selectedMarket.coin });
+      const bids = l2?.levels?.[0] || [];
+      const asks = l2?.levels?.[1] || [];
+      const bestBid = bids[0] ? parseFloat(bids[0].px) : null;
+      const bestAsk = asks[0] ? parseFloat(asks[0].px) : null;
+      const depth = [...bids, ...asks].reduce((acc, l) => acc + (parseFloat(l.sz) * parseFloat(l.px)), 0);
+      
+      setMarketData({
+        coin: selectedMarket.coin,
+        bestBid,
+        bestAsk,
+        spread: (bestBid && bestAsk) ? (bestAsk - bestBid) : null,
+        depth: scaleSize(depth, selectedMarket.szDecimals),
+        trustScore: calcTrustScore({ spread: (bestAsk - bestBid), depth })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+    setLoading(false);
+  }, [selectedMarket]);
+
+  useEffect(() => { refreshData(); }, [refreshData]);
+
   return (
-    // PASTE YOUR ENTIRE <div style=...> BLOCK HERE
+    <div style={{ minHeight: "100vh", backgroundColor: t.bg, color: t.text, fontFamily: "monospace", padding: "20px" }}>
+      {/* Background Grid Pattern */}
+      <div style={{ position: "fixed", inset: 0, backgroundImage: `linear-gradient(${t.grid} 1px, transparent 1px), linear-gradient(90deg, ${t.grid} 1px, transparent 1px)`, backgroundSize: "32px 32px", opacity: 0.2, pointerEvents: "none" }} />
+
+      <div style={{ position: "relative", maxWidth: "900px", margin: "0 auto" }}>
+        
+        {/* Header Section */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 900, letterSpacing: "-1px" }}>
+              OUTCOMER<span style={{ color: t.accent }}>GEN</span>
+            </h1>
+            <div style={{ fontSize: "10px", color: t.textMuted, letterSpacing: "2px" }}>INTELLIGENCE LAYER v1.0</div>
+          </div>
+          
+          <div style={{ display: "flex", gap: "10px" }}>
+            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={{ padding: "8px 12px", borderRadius: "6px", border: `1px solid ${t.border}`, background: t.card, color: t.text, cursor: "pointer" }}>
+              {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+            <button onClick={refreshData} style={{ padding: "8px 12px", borderRadius: "6px", border: `1px solid ${t.accent}`, background: t.accentSoft, color: t.accent, cursor: "pointer" }}>
+              <RefreshCw size={14} className={loading ? "spin" : ""} />
+            </button>
+          </div>
+        </div>
+
+        {/* Dashboard Content */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px" }}>
+          
+          {/* Market Health Card */}
+          <div style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: "12px", padding: "20px", boxShadow: t.glow }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
+              <div style={{ fontSize: "12px", fontWeight: "bold", color: t.accent }}>MARKET HEALTH</div>
+              {error && <div style={{ fontSize: "10px", color: t.warn }}>{error}</div>}
+            </div>
+            
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div style={{ fontSize: "18px", fontWeight: "bold" }}>{marketData?.coin || "SELECT MARKET"}</div>
+                <div style={{ fontSize: "12px" }}>Bid: <span style={{ color: t.yes }}>{fmtNum(marketData?.bestBid)}</span></div>
+                <div style={{ fontSize: "12px" }}>Ask: <span style={{ color: t.no }}>{fmtNum(marketData?.bestAsk)}</span></div>
+              </div>
+              <TrustGauge score={marketData?.trustScore} t={t} />
+            </div>
+          </div>
+
+          {/* Whale Sieve Placeholder */}
+          <div style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: "12px", padding: "20px" }}>
+            <div style={{ fontSize: "12px", fontWeight: "bold", color: t.accent, marginBottom: "15px" }}>WHALE SIEVE</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", color: t.textMuted }}>
+              <Fish size={20} />
+              <span style={{ fontSize: "12px" }}>Scanning for high-value positions...</span>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Footer */}
+        <div style={{ marginTop: "40px", textAlign: "center", fontSize: "10px", color: t.textMuted }}>
+          PHASE 1: FOUNDATION • SYNCED: {new Date().toLocaleTimeString()}
+        </div>
+      </div>
+
+      {/* Global CSS for Animations */}
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
+      `}</style>
+    </div>
   );
 }
 
-// ─── VITE ENTRY POINT ──────────────────────────────────────────────────────────
+// ─── VITE ENTRY POINT ────────────────────────────────────────────────────────
+// This replaces the old index.js logic and mounts the app into #root
 const container = document.getElementById("root");
 if (container) {
-  createRoot(container).render(<OutcomerGen />);
-        }
+  const root = createRoot(container);
+  root.render(<OutcomerGen />);
+}
+
+export default OutcomerGen;
