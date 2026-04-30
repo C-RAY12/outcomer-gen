@@ -696,8 +696,8 @@ export default function OutcomerGen() {
       `}</style>
     </div>
   );
-    }
-const rootElement = document.getElementById("root");
-if (rootElement) {
-  createRoot(rootElement).render(<OutcomerGen />);
+const container = document.getElementById("root");
+if (container) {
+  createRoot(container).render(<OutcomerGen />);
 }
+
