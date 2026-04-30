@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createRoot } from "react-dom/client";
-// Import all necessary icons from lucide-react
 import { Activity, Zap, Eye, AlertTriangle, RefreshCw, Moon, Sun, TrendingUp, TrendingDown, Minus, Shield, Fish, MessageSquare, ChevronRight, Circle, BarChart2 } from "lucide-react";
-// Import Recharts components for the Whale Sieve visualization
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 
 // ─── THEME SYSTEM ───────────────────────────────────────────────────────────
-// High-contrast industrial themes for Web3 monitoring
 const THEMES = {
   dark: {
     bg: "#050d1a",
@@ -48,10 +45,9 @@ const THEMES = {
   },
 };
 
-// ─── HYPERLIQUID TESTNET API CONFIG ──────────────────────────────────────────
+// ─── API CONFIG ─────────────────────────────────────────────────────────────
 const HL_API = "https://api.hyperliquid-testnet.xyz/info";
 
-// Helper for POST requests to the Hyperliquid Info API
 async function hlPost(body) {
   const r = await fetch(HL_API, {
     method: "POST",
@@ -62,28 +58,12 @@ async function hlPost(body) {
   return r.json();
 }
 
-// ─── UTILITY FUNCTIONS (FORMATTING) ──────────────────────────────────────────
-function scaleSize(raw, szDecimals) {
-  if (raw == null || szDecimals == null) return null;
-  return parseFloat(raw) / Math.pow(10, szDecimals);
-}
+// ─── UTILITIES & DATA PROCESSING ────────────────────────────────────────────
+const scaleSize = (raw, szDecimals) => (raw == null || szDecimals == null) ? null : parseFloat(raw) / Math.pow(10, szDecimals);
+const fmtNum = (n, d = 4) => (n == null || isNaN(n)) ? "—" : n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtUSD = (n) => (n == null || isNaN(n)) ? "—" : "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const shortAddr = (a) => a ? a.slice(0, 6) + "…" + a.slice(-4) : "—";
 
-function fmtNum(n, decimals = 4) {
-  if (n == null || isNaN(n)) return "—";
-  return n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-}
-
-function fmtUSD(n) {
-  if (n == null || isNaN(n)) return "—";
-  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function shortAddr(addr) {
-  if (!addr) return "—";
-  return addr.slice(0, 6) + "…" + addr.slice(-4);
-}
-
-// Logic to determine market health score based on depth and spread
 function calcTrustScore({ spread, depth }) {
   if (spread == null || depth == null) return null;
   const spreadPenalty = Math.max(0, 1 - spread * 10);
@@ -91,58 +71,33 @@ function calcTrustScore({ spread, depth }) {
   return Math.round(((spreadPenalty + depthBonus) / 2) * 100);
 }
 
-// ─── UI COMPONENTS ────────────────────────────────────────────────────────────
-
-// Gauge showing the trust score of a market
+// ─── SUB-COMPONENTS ─────────────────────────────────────────────────────────
 function TrustGauge({ score, t }) {
   const clr = score >= 75 ? t.yes : score >= 45 ? t.warn : t.no;
   const pct = score ?? 0;
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-      <div style={{ position: "relative", width: 100, height: 50 }}>
-        <svg width="100" height="50" viewBox="0 0 100 50">
-          <path d="M10 45 A40 40 0 0 1 90 45" fill="none" stroke={t.border} strokeWidth={8} strokeLinecap="round" />
-          <path d="M10 45 A40 40 0 0 1 90 45" fill="none" stroke={clr} strokeWidth={8} strokeLinecap="round" strokeDasharray={`${(pct / 100) * 126} 126`} />
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div style={{ position: "relative", width: 120, height: 64 }}>
+        <svg width={120} height={64} viewBox="0 0 120 64">
+          <path d="M10 60 A50 50 0 0 1 110 60" fill="none" stroke={t.border} strokeWidth={10} strokeLinecap="round" />
+          <path d="M10 60 A50 50 0 0 1 110 60" fill="none" stroke={clr} strokeWidth={10} strokeLinecap="round" strokeDasharray={`${(pct / 100) * 157} 157`} style={{ filter: `drop-shadow(0 0 6px ${clr})`, transition: "stroke-dasharray 1s ease" }} />
         </svg>
-        <div style={{ position: "absolute", bottom: 0, width: "100%", textAlign: "center", fontSize: 20, fontWeight: 900, color: clr }}>{score ?? "?"}</div>
+        <div style={{ position: "absolute", bottom: 4, left: "50%", transform: "translateX(-50%)", fontSize: 24, fontWeight: 900, color: clr, fontFamily: "monospace" }}>{score ?? "?"}</div>
       </div>
-      <div style={{ fontSize: 9, fontWeight: 700, color: clr }}>TRUST SCORE</div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: clr, letterSpacing: 1 }}>TRUST SCORE</div>
     </div>
   );
 }
 
-// ─── MAIN APP COMPONENT ───────────────────────────────────────────────────────
-function OutcomerGen() {
+// ─── MAIN APP ───────────────────────────────────────────────────────────────
+export default function OutcomerGen() {
   const [theme, setTheme] = useState("dark");
   const t = THEMES[theme];
-
   const [markets, setMarkets] = useState([]);
   const [selectedMarket, setSelectedMarket] = useState(null);
   const [marketData, setMarketData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
 
-  // Initialize market list from Hyperliquid or fallback to demo
-  useEffect(() => {
-    async function init() {
-      setLoading(true);
-      try {
-        const meta = await hlPost({ type: "meta" });
-        const list = (meta?.universe || []).slice(0, 10).map(m => ({ coin: m.name, szDecimals: m.szDecimals }));
-        setMarkets(list);
-        if (list.length > 0) setSelectedMarket(list[0]);
-      } catch (e) {
-        setError("Using Demo Data (API Restricted)");
-        const demo = [{ coin: "BTC-OUTCOME", szDecimals: 2 }, { coin: "ETH-OUTCOME", szDecimals: 2 }];
-        setMarkets(demo);
-        setSelectedMarket(demo[0]);
-      }
-      setLoading(false);
-    }
-    init();
-  }, []);
-
-  // Fetch specific market details (Spread, Depth, etc.)
   const refreshData = useCallback(async () => {
     if (!selectedMarket) return;
     setLoading(true);
@@ -152,88 +107,91 @@ function OutcomerGen() {
       const asks = l2?.levels?.[1] || [];
       const bestBid = bids[0] ? parseFloat(bids[0].px) : null;
       const bestAsk = asks[0] ? parseFloat(asks[0].px) : null;
-      const depth = [...bids, ...asks].reduce((acc, l) => acc + (parseFloat(l.sz) * parseFloat(l.px)), 0);
-      
+      const depthUSD = [...bids, ...asks].reduce((acc, l) => acc + (parseFloat(l.sz) * parseFloat(l.px)), 0);
+
       setMarketData({
         coin: selectedMarket.coin,
         bestBid,
         bestAsk,
         spread: (bestBid && bestAsk) ? (bestAsk - bestBid) : null,
-        depth: scaleSize(depth, selectedMarket.szDecimals),
-        trustScore: calcTrustScore({ spread: (bestAsk - bestBid), depth })
+        depth: scaleSize(depthUSD, selectedMarket.szDecimals),
+        trustScore: calcTrustScore({ spread: (bestAsk - bestBid), depth: depthUSD })
       });
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error("Refresh failed", e); }
     setLoading(false);
   }, [selectedMarket]);
 
-  useEffect(() => { refreshData(); }, [refreshData]);
+  useEffect(() => {
+    async function init() {
+      try {
+        const meta = await hlPost({ type: "meta" });
+        const list = (meta?.universe || []).slice(0, 10).map(m => ({ coin: m.name, szDecimals: m.szDecimals }));
+        setMarkets(list);
+        if (list.length > 0) setSelectedMarket(list[0]);
+      } catch (e) {
+        const demo = [{ coin: "SOL", szDecimals: 2 }, { coin: "BTC", szDecimals: 2 }];
+        setMarkets(demo);
+        setSelectedMarket(demo[0]);
+      }
+    }
+    init();
+  }, []);
+
+  useEffect(() => { if (selectedMarket) refreshData(); }, [selectedMarket, refreshData]);
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: t.bg, color: t.text, fontFamily: "monospace", padding: "20px" }}>
-      {/* Background Grid Pattern */}
-      <div style={{ position: "fixed", inset: 0, backgroundImage: `linear-gradient(${t.grid} 1px, transparent 1px), linear-gradient(90deg, ${t.grid} 1px, transparent 1px)`, backgroundSize: "32px 32px", opacity: 0.2, pointerEvents: "none" }} />
-
-      <div style={{ position: "relative", maxWidth: "900px", margin: "0 auto" }}>
-        
-        {/* Header Section */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
+    <div style={{ minHeight: "100vh", background: t.bg, color: t.text, fontFamily: "monospace", padding: "24px", position: "relative" }}>
+      {/* Grid pattern background */}
+      <div style={{ position: "fixed", inset: 0, backgroundImage: `linear-gradient(${t.grid} 1px, transparent 1px), linear-gradient(90deg, ${t.grid} 1px, transparent 1px)`, backgroundSize: "32px 32px", opacity: 0.3, pointerEvents: "none" }} />
+      
+      <div style={{ position: "relative", maxWidth: "1000px", margin: "0 auto", zIndex: 1 }}>
+        <header style={{ display: "flex", justifyContent: "space-between", marginBottom: "32px" }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 900, letterSpacing: "-1px" }}>
-              OUTCOMER<span style={{ color: t.accent }}>GEN</span>
-            </h1>
-            <div style={{ fontSize: "10px", color: t.textMuted, letterSpacing: "2px" }}>INTELLIGENCE LAYER v1.0</div>
+            <h1 style={{ fontSize: "24px", fontWeight: 900, color: t.accent }}>OUTCOMER<span style={{ color: t.text }}>GEN</span></h1>
+            <p style={{ fontSize: "10px", color: t.textMuted, letterSpacing: "2px" }}>INTELLIGENCE LAYER v1.0</p>
           </div>
-          
-          <div style={{ display: "flex", gap: "10px" }}>
-            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={{ padding: "8px 12px", borderRadius: "6px", border: `1px solid ${t.border}`, background: t.card, color: t.text, cursor: "pointer" }}>
-              {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-            </button>
-            <button onClick={refreshData} style={{ padding: "8px 12px", borderRadius: "6px", border: `1px solid ${t.accent}`, background: t.accentSoft, color: t.accent, cursor: "pointer" }}>
-              <RefreshCw size={14} className={loading ? "spin" : ""} />
-            </button>
+          <div style={{ display: "flex", gap: "12px" }}>
+             <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} style={{ padding: "8px", background: t.card, border: `1px solid ${t.border}`, color: t.text, cursor: "pointer", borderRadius: "6px" }}>
+               {theme === "dark" ? <Sun size={16}/> : <Moon size={16}/>}
+             </button>
+             <button onClick={refreshData} style={{ padding: "8px 16px", background: t.accentSoft, border: `1px solid ${t.accent}`, color: t.accent, cursor: "pointer", borderRadius: "6px", display: "flex", alignItems: "center", gap: "8px" }}>
+               <RefreshCw size={14} className={loading ? "spin" : ""} /> REFRESH
+             </button>
           </div>
-        </div>
+        </header>
 
-        {/* Dashboard Content */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "20px" }}>
-          
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "24px" }}>
           {/* Market Health Card */}
-          <div style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: "12px", padding: "20px", boxShadow: t.glow }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
-              <div style={{ fontSize: "12px", fontWeight: "bold", color: t.accent }}>MARKET HEALTH</div>
-              {error && <div style={{ fontSize: "10px", color: t.warn }}>{error}</div>}
-            </div>
-            
+          <section style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: "12px", padding: "24px", boxShadow: t.glow }}>
+            <h2 style={{ fontSize: "12px", color: t.accent, marginBottom: "20px", letterSpacing: 1 }}>MARKET HEALTH</h2>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                <div style={{ fontSize: "18px", fontWeight: "bold" }}>{marketData?.coin || "SELECT MARKET"}</div>
-                <div style={{ fontSize: "12px" }}>Bid: <span style={{ color: t.yes }}>{fmtNum(marketData?.bestBid)}</span></div>
-                <div style={{ fontSize: "12px" }}>Ask: <span style={{ color: t.no }}>{fmtNum(marketData?.bestAsk)}</span></div>
+              <div>
+                <p style={{ fontSize: "22px", fontWeight: "bold", marginBottom: "12px" }}>{marketData?.coin || "LOADING..."}</p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <p style={{ fontSize: "13px" }}>Bid: <span style={{ color: t.yes }}>{fmtNum(marketData?.bestBid)}</span></p>
+                  <p style={{ fontSize: "13px" }}>Ask: <span style={{ color: t.no }}>{fmtNum(marketData?.bestAsk)}</span></p>
+                  <p style={{ fontSize: "13px" }}>Liquidity: <span style={{ color: t.textDim }}>{fmtUSD(marketData?.depth)}</span></p>
+                </div>
               </div>
               <TrustGauge score={marketData?.trustScore} t={t} />
             </div>
-          </div>
+          </section>
 
-          {/* Whale Sieve Placeholder */}
-          <div style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: "12px", padding: "20px" }}>
-            <div style={{ fontSize: "12px", fontWeight: "bold", color: t.accent, marginBottom: "15px" }}>WHALE SIEVE</div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", color: t.textMuted }}>
-              <Fish size={20} />
+          {/* Whale Sieve Card */}
+          <section style={{ background: t.card, border: `1px solid ${t.border}`, borderRadius: "12px", padding: "24px" }}>
+            <h2 style={{ fontSize: "12px", color: t.accent, marginBottom: "20px", letterSpacing: 1 }}>WHALE SIEVE</h2>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px", color: t.textMuted }}>
+              <Fish size={24} /> 
               <span style={{ fontSize: "12px" }}>Scanning for high-value positions...</span>
             </div>
-          </div>
-
+          </section>
         </div>
 
-        {/* Footer */}
-        <div style={{ marginTop: "40px", textAlign: "center", fontSize: "10px", color: t.textMuted }}>
+        <footer style={{ marginTop: "40px", textAlign: "center", fontSize: "10px", color: t.textMuted, borderTop: `1px solid ${t.border}`, paddingTop: "20px" }}>
           PHASE 1: FOUNDATION • SYNCED: {new Date().toLocaleTimeString()}
-        </div>
+        </footer>
       </div>
 
-      {/* Global CSS for Animations */}
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; }
@@ -242,12 +200,8 @@ function OutcomerGen() {
   );
 }
 
-// ─── VITE ENTRY POINT ────────────────────────────────────────────────────────
-// This replaces the old index.js logic and mounts the app into #root
 const container = document.getElementById("root");
 if (container) {
   const root = createRoot(container);
   root.render(<OutcomerGen />);
 }
-
-export default OutcomerGen;
